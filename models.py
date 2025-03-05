@@ -6,3 +6,8 @@ class User(BaseModel):
     username: str
     fullname: str | None = None
     password: str | None = None
+
+class UpdateUser(BaseModel):
+    username: str | None = None
+    fullname: str | None = None
+    # password: str
