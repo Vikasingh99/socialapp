@@ -8,6 +8,7 @@ from database import get_db_connection
 from functools import wraps
 from fastapi import Request, HTTPException
 from psycopg2.extras import RealDictCursor
+# from service import update_user
 
 
 def encrypt_password(password):
@@ -44,7 +45,9 @@ def create_user(user: User, db_conn):
     data_to_insert = (
         user.username,
         user.fullname,
-        encrypted_password
+        encrypted_password,
+        # user.email,
+        # user.description
     )
 
     insert_query = """
@@ -94,7 +97,7 @@ def verify_jwt_token(token):
         raise HTTPException(status_code=401, detail="Invalid token")
  
 
-def update_user(username: str, password: str, new_username: str, new_fullname: str):
+def update_user(username: str, update_fields: dict):
     # Fetch the stored password from the database
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -105,30 +108,31 @@ def update_user(username: str, password: str, new_username: str, new_fullname: s
 
     if not existing_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Verify the password
-    stored_password = existing_user[3]  # password is in the 4th column
-    secret_key = os.getenv("SECRET_KEY")
-    encrypted_login_password = hashlib.sha256((password + secret_key).encode('utf-8')).hexdigest()
 
-    if encrypted_login_password != stored_password:
-        raise HTTPException(status_code=401, detail="Incorrect password")
+    # Now, construct the dynamic query based on the fields that need to be updated
+    update_query = "UPDATE users SET "
+    update_values = []
 
-    # Now, let's update the user's details (username, fullname)
-    cursor.execute("""
-        UPDATE users 
-        SET username = %s, fullname = %s
-        WHERE username = %s
-    """, (new_username, new_fullname, username))
-    
+    for field, value in update_fields.items():
+        update_query += f"{field} = %s, "
+        update_values.append(value)
+
+    # Remove the trailing comma and space
+    update_query = update_query.rstrip(", ")
+
+    # Add the condition to update the specific user
+    update_query += " WHERE username = %s"
+    update_values.append(username)
+
+    # Execute the query
+    cursor.execute(update_query, tuple(update_values))
+
     conn.commit()
-
     cursor.close()
     conn.close()
-
     return True
 
-def delete_user_from_db(username: str, password: str):
+def delete_user_from_db(username: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -139,17 +143,9 @@ def delete_user_from_db(username: str, password: str):
     if existing_user is None:
         return False  # User does not exist
     
-    # Verify the password
-    stored_password = existing_user[3]  # Assuming the password is the 4th column in the DB
-    
-    if verify_password(password, stored_password):  # We use the verify_password function
-        # If the password is correct, delete the user
-        cursor.execute("DELETE FROM users WHERE username = %s", (username,))
-        conn.commit()
-        return True  # User successfully deleted
-    else:
-        return False 
-    
+    cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+    conn.commit()
+    return True  # User successfully deleted
 
 def authenticate(func):
     @wraps(func)
@@ -159,7 +155,7 @@ def authenticate(func):
         
         if not token:
             raise HTTPException(status_code=403, detail="Authorization token is missing")
-        print("Received token:", token)
+
         try:
             if token.startswith("Bearer "):
                 token = token[7:]
@@ -177,14 +173,21 @@ def authenticate(func):
 
 
 def user_info_db(details):
+    
+    #fetch the username from dict
     username = details.get("username")
 
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor = conn.cursor(cursor_factory=RealDictCursor) 
+    #The RealDictCursor is used to ensure that the result of the query is returned as a dictionary
 
     query = """SELECT id, username, fullname FROM users WHERE username = %s"""
     cursor.execute(query, (username,))
+
+    #fetch and store the row(user_details)
     user_data = cursor.fetchone()
+    if not user_data:
+        return "Invalid Token"
 
     if "password" in user_data:
         del user_data["password"]

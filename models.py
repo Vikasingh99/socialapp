@@ -1,13 +1,18 @@
-from pydantic import BaseModel
-
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
 
 class User(BaseModel):
-    id: int | None = None 
+    id: Optional[int] = None
     username: str
-    fullname: str | None = None
-    password: str | None = None
+    fullname: Optional[str]= None
+    password: Optional[str]= None
+    
+
+class LoginModel(BaseModel):
+    username: str
+    password: str
 
 class UpdateUser(BaseModel):
-    username: str | None = None
-    fullname: str | None = None
-    # password: str
+    # username: Optional[str]= None
+    fullname: Optional[str]= None
+    
