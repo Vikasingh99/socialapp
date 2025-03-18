@@ -1,17 +1,18 @@
 from fastapi import FastAPI, Header, HTTPException, Request, status
-from service import os, jwt
-from models import User, UpdateUser, LoginModel
+from typing import List, Optional
+from models import User, UpdateUser, LoginModel, PostIn, PostOut, CommentIn, CommentOut
 from database import get_db_connection
-from service import create_user, get_token, user_info_db , delete_user_from_db, authenticate, update_user
+from service import create_user, get_token, user_info_db , delete_user_from_db, authenticate, update_user, create_post_in_db, update_post_in_db, delete_post_in_db, get_posts_by_user_in_db, create_comment_in_db, update_comment_in_db, delete_comment_in_db, like_comment_in_db, unlike_comment_in_db, like_post_in_db, unlike_post_in_db, search_posts_in_db
 from pydantic import ValidationError
 from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="Social-App",
-            description="An API to manage users."
+            description="An API to manage users activity."
               )
 db_connection = get_db_connection()
 
+#This section belongs to user
 
 #Create user and append the user details into the database
 @app.post("/user/signup", tags=['Users'])
@@ -36,9 +37,9 @@ def login(user: LoginModel):
     
 
 #Get the user detail with the decoded token and verify , return from db
-@app.get("/user/details", tags=['User details from Token'])
+@app.get("/user/details", tags=['Users'])
 @authenticate
-def user_detail(request: Request):
+def get_user_detail(request: Request):
     user_details = request.state.user
 
     user_info = user_info_db(user_details)
@@ -69,7 +70,7 @@ def update_user_details(user: UpdateUser, request: Request):
         raise HTTPException(status_code=400, detail="Failed to update user details")
 
 
-@app.delete("/user/delete_user", tags=['Users'])
+@app.delete("/user/del_user", tags=['Users'])
 @authenticate
 def delete_user(request: Request):
     
@@ -86,5 +87,68 @@ def delete_user(request: Request):
         raise HTTPException(status_code=404, detail="User not found or incorrect password")
     
 
+#This section related to post
+# Create a new post
+@app.post("/posts/create", tags=["Post"])
+@authenticate
+def create_post(request: Request, post: PostIn):
+    # Get the user details from the authenticated request state
+    user_details = request.state.user
+    if not user_details:
+        raise HTTPException(status_code=403, detail="Invalid token or user not found")
 
-   
+    post_data = create_post_in_db(post.description, user_details["user_id"])
+
+    # Return the post data in the response
+    return post_data
+
+# Edit an existing post
+@app.put("/posts/{post_id}", response_model=PostOut, tags=["Post"])
+@authenticate
+def update_post(request: Request, post: PostIn, post_id: int):
+    user_details = request.state.user
+    if not user_details:
+        raise HTTPException(status_code=403, detail="Invalid token or user not found")
+
+    update_data = update_post_in_db(post.description, post_id)
+    
+    return update_data
+
+
+# Delete a post
+@app.delete("/posts/{post_id}", response_model=dict, tags=["Post"])
+@authenticate  # Apply the authentication decorator to check if the user is authenticated
+def delete_post(request: Request, post_id: int):
+    user_details = request.state.user  # Get the user from the request (stored in the state by the auth decorator)
+
+    if not user_details:
+        raise HTTPException(status_code=403, detail="Invalid token or user not found")
+
+    user_id = user_details['user_id']  # Assuming the user details in the token contain the user_id
+
+    # Call the service function to delete the post and pass the user_id for authorization
+    result = delete_post_in_db(post_id, user_id)
+    
+    # Return the response returned by the service layer
+    return result
+
+
+
+# Get all posts created by the authenticated user (via JWT)
+@app.get("/posts/user", response_model=List[PostOut], tags=["Post"])
+@authenticate  # Apply the authentication decorator
+def get_posts_by_user(request: Request):
+    user_details = request.state.user  # Get user details from the JWT token
+
+    if not user_details:
+        raise HTTPException(status_code=403, detail="User not authenticated")
+
+    user_id = user_details['user_id']  # Assuming the JWT payload contains 'user_id'
+
+    # Call the service function to get posts by the user
+    posts = get_posts_by_user_in_db(user_id)
+    
+    # Return the result returned by the service layer
+    return posts
+
+

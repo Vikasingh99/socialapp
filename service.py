@@ -1,8 +1,9 @@
 import os
 import hashlib
 from datetime import datetime, timedelta
+from typing import Optional, List
 import jwt
-from models import User
+from models import User, UpdateUser, LoginModel, PostIn, PostOut, CommentIn, CommentOut
 import bcrypt
 from database import get_db_connection
 from functools import wraps
@@ -29,7 +30,7 @@ def create_jwt_token(payload):
     if "password" in payload:
         del payload["password"]
 
-    payload = { "id": payload["id"], "username": payload["username"] }
+    payload = { "user_id": payload["user_id"], "username": payload["username"] }
     # Add expiration time to the payload (1 week from now)
     expiration_time = datetime.utcnow() + timedelta(weeks=1)
     payload["exp"] = expiration_time
@@ -46,12 +47,11 @@ def create_user(user: User, db_conn):
         user.username,
         user.fullname,
         encrypted_password,
-        # user.email,
-        # user.description
+        
     )
 
     insert_query = """
-        INSERT INTO public.users (username, fullname, password)
+        INSERT INTO users (username, fullname, password)
         VALUES (%s, %s, %s);
     """
     cursor.execute(insert_query, data_to_insert)
@@ -69,7 +69,7 @@ def get_token(user: User, db_conn):
     """
     cursor.execute(get_query, (username))
     db_user_data = cursor.fetchone()
-    user_keys = ["id", "username", "fullname", "password"]
+    user_keys = ["user_id", "username", "fullname", "password"]
     user_data_dict = {}
 
     for i in range(len(user_keys)):
@@ -78,7 +78,7 @@ def get_token(user: User, db_conn):
     if verify_password(login_password, user_data_dict["password"]):
         # create jwt toke 
         token = create_jwt_token(user_data_dict)
-        return {"access token ": token}
+        return {"access token ": token, "token-type": "Bearer"}
     else:
         return False
 
@@ -161,6 +161,8 @@ def authenticate(func):
                 token = token[7:]
             # Verify the JWT token
             payload = verify_jwt_token(token)
+            # print("User Details: ", request.state.user)
+
             # You can store user information in the request for further use
             request.state.user = payload  # Save user info in request state
         except Exception as e:
@@ -181,7 +183,7 @@ def user_info_db(details):
     cursor = conn.cursor(cursor_factory=RealDictCursor) 
     #The RealDictCursor is used to ensure that the result of the query is returned as a dictionary
 
-    query = """SELECT id, username, fullname FROM users WHERE username = %s"""
+    query = """SELECT user_id, username, fullname FROM users WHERE username = %s"""
     cursor.execute(query, (username,))
 
     #fetch and store the row(user_details)
@@ -195,3 +197,121 @@ def user_info_db(details):
     return user_data
     
 
+# Create post
+def create_post_in_db(description: str, user_id):
+    db_conn = get_db_connection()
+    cursor = db_conn.cursor()
+    created_at = datetime.now()
+    updated_at = created_at
+
+    insert_query = """
+        INSERT INTO posts (user_id, description, created_at, updated_at) 
+        VALUES (%s, %s, %s, %s) RETURNING post_id;
+    """
+    cursor.execute(insert_query, (user_id, description, created_at, updated_at))
+    post_id = cursor.fetchone()[0]
+
+    db_conn.commit()
+    cursor.close()
+    db_conn.close()
+    return {
+        "post_id": post_id,
+        "description": description,
+        "created_at": created_at,
+        "updated_at": updated_at
+    }
+
+#update the post
+def update_post_in_db(description: str, post_id):
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT * FROM posts WHERE post_id = %s", (post_id,))
+        db_post = cursor.fetchone()
+
+        if not db_post:
+            raise HTTPException(status_code=404, detail="Post not found")
+
+        updated_at = datetime.now()
+        cursor.execute("UPDATE posts SET description = %s, updated_at = %s WHERE post_id = %s",
+                    (description, updated_at, post_id))
+        
+        db_conn.commit()
+
+        print(db_post)
+
+        return {
+            "post_id": post_id, 
+            "description": description, 
+            "created_at": db_post[3], 
+            "updated_at": updated_at
+            }
+    except Exception as e:
+        raise HTTPException(status_code = 500, detail = "Database connection error")
+
+#delete the post
+def delete_post_in_db(post_id: int, user_id: int):
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor()
+        
+        # Retrieve the post from the database
+        cursor.execute("SELECT * FROM posts WHERE post_id = %s", (post_id,))
+        db_post = cursor.fetchone()
+
+        if not db_post:
+            raise HTTPException(status_code=404, detail="Post not found")
+
+        # Check if the user is the owner of the post (assuming 'user_id' is a column in your post table)
+        if db_post[1] != user_id:  # Assuming db_post[1] is the user_id of the post creator
+            raise HTTPException(status_code=403, detail="You are not authorized to delete this post")
+
+        # Proceed with deletion
+        cursor.execute("DELETE FROM posts WHERE post_id = %s", (post_id,))
+        db_conn.commit()
+
+        return {"message": "Post deleted successfully"}
+    
+    # If the exception is an HTTPException (e.g., Post not found, Unauthorized), raise it
+    except Exception as e:
+        raise e
+
+    # Catch other exceptions (e.g., database connection errors)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+
+#get all the post done by a single user
+def get_posts_by_user_in_db(user_id: int):
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor()
+
+        # Query to get posts by a specific user
+        cursor.execute("""
+            SELECT post_id, description, created_at, updated_at 
+            FROM posts 
+            WHERE user_id = %s
+        """, (user_id,))
+
+        posts = cursor.fetchall()
+
+        if not posts:
+            raise HTTPException(status_code=404, detail="No posts found for this user")
+
+    # Convert result into list of dictionaries
+        result = [
+                {
+                    "post_id": post_id, 
+                    "description": description, 
+                    "created_at": created_at, 
+                    "updated_at": updated_at
+                }
+                for post_id, description, created_at, updated_at in posts
+            ]
+            
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection error")
+    
