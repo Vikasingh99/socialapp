@@ -152,3 +152,94 @@ def get_posts_by_user(request: Request):
     return posts
 
 
+
+#This section is related to comment
+
+# Create a new comment on a post
+@app.post("/posts/comments/{post_id}", tags=["Comments"])
+@authenticate  # Ensure the user is authenticated before proceeding
+def create_comment(post_id: int, comment: CommentIn, request: Request):
+    # Retrieve the user details from the request state (set by the authenticate decorator)
+    user_details = request.state.user
+
+    # Call the service function to create a comment in the database
+    comment_data = create_comment_in_db(post_id, user_details["user_id"], comment.content)
+    
+    return comment_data
+
+# Edit an existing comment
+@app.put("/posts/{post_id}/comments/{comment_id}", tags=["Comments"])
+@authenticate  # Ensure the user is authenticated before proceeding
+def update_comment(post_id: int, comment_id: int, comment: CommentIn, request: Request):
+    # Retrieve the user details from the request state (set by the authenticate decorator)
+    user_details = request.state.user
+
+    # Call the service function to update the comment in the database
+    updated_comment = update_comment_in_db(comment_id, user_details["user_id"], post_id, comment.content)
+    
+    return updated_comment
+
+#Delete existing comment
+@app.delete("/comments/{comment_id}", tags=["Comments"])
+@authenticate  # Ensure the user is authenticated before proceeding
+def delete_comment(comment_id: int, request: Request):
+    # Retrieve the user details from the request state (set by the authenticate decorator)
+    user_details = request.state.user
+
+    # Call the service function to delete the comment from the database
+    response = delete_comment_in_db(comment_id, user_details["user_id"])
+    
+    return response
+
+#likes a comment
+@app.post("/comments/{comment_id}/like", tags=["Comments"])
+@authenticate  # Ensure the user is authenticated before proceeding
+def like_comment(comment_id: int, request: Request):
+    # Retrieve user details from the request state (set by the authenticate decorator)
+    user_details = request.state.user
+
+    # Call the service function to like the comment
+    response = like_comment_in_db(comment_id, user_details["user_id"])
+    
+    return response
+
+# Unlike a comment
+@app.delete("/comments/{comment_id}/unlike", tags=["Comments"])
+@authenticate  # Ensure the user is authenticated before proceeding
+def unlike_comment(comment_id: int, request: Request):
+    # Retrieve user details from the request state (set by the authenticate decorator)
+    user_details = request.state.user
+
+    # Call the service function to unlike the comment
+    response = unlike_comment_in_db(comment_id, user_details["user_id"])
+    
+    return response
+
+# Like a post endpoint
+@app.post("/posts/{post_id}/like", tags=["Post like"])
+@authenticate
+def like_post(post_id: int, request: Request):
+    # Get the user from the request using authentication (assumed to be in state.user)
+    user_details = request.state.user
+    # Assuming user_id is in the JWT payload
+    response = like_post_in_db(post_id, user_details["user_id"])
+    # Call the service layer to handle the like functionality
+    return response
+
+# Unlike a post endpoint
+@app.delete("/posts/{post_id}/unlike", tags=["Post like"])
+@authenticate
+def unlike_post(post_id: int, request: Request):
+    # Get the user from the request using authentication (assumed to be in state.user)
+    user_details = request.state.user
+    # Assuming user_id is in the JWT payload
+    response = unlike_post_in_db(post_id, user_details["user_id"])
+    # Call the service layer to handle the unlike functionality
+    return response
+
+
+# Search posts by keyword (description) endpoint
+@app.get("/posts/search", response_model=List[dict], tags=["Search Post"])
+def search_posts(keyword: Optional[str] = None, page: int = 1, page_size: int = 10):
+    # Call the service function to search posts from the database
+    return search_posts_in_db(keyword, page, page_size)

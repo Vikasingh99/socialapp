@@ -315,3 +315,201 @@ def get_posts_by_user_in_db(user_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Database connection error")
     
+
+# Create a comment
+def create_comment_in_db(post_id: int, user_id: int, content: str):
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor()
+
+        # Insert comment into the database
+        created_at = updated_at = datetime.now()
+        insert_query = """
+            INSERT INTO comments (post_id, user_id, content, created_at, updated_at) 
+            VALUES (%s, %s, %s, %s, %s) RETURNING comment_id;
+        """
+        cursor.execute(insert_query, (post_id, user_id, content, created_at, updated_at))
+        comment_id = cursor.fetchone()[0]
+
+        db_conn.commit()
+
+        return {"comment_id": comment_id, "post_id": post_id, "content": content, "created_at": created_at}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+
+#Update an existing comment
+def update_comment_in_db(comment_id: int, user_id: int, post_id: int, new_content: str):
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor()
+
+        # Retrieve the comment from the database
+        cursor.execute("SELECT * FROM comments WHERE comment_id = %s", (comment_id,))
+        db_comment = cursor.fetchone()
+
+        if not db_comment:
+            raise HTTPException(status_code=404, detail="Comment not found")
+        
+        # Ensure that the user is the owner of the comment
+        if db_comment[2] != user_id:  # Assuming db_comment[2] is the user_id of the comment creator
+            raise HTTPException(status_code=403, detail="You are Not authorized to edit this comment")
+
+        # Ensure that the comment belongs to the specified post
+        if db_comment[1] != post_id:  # Assuming db_comment[1] is the post_id to which the comment belongs
+            raise HTTPException(status_code=403, detail="This comment does not belong to the specified post")
+
+        # Update the comment content
+        updated_at = datetime.now()
+        cursor.execute("UPDATE comments SET content = %s, updated_at = %s WHERE comment_id = %s",
+                       (new_content, updated_at, comment_id))
+
+        db_conn.commit()
+
+        return {"id": comment_id, "content": new_content, "updated_at": updated_at}
+    
+    except Exception as e:
+        raise e
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection error")
+    
+
+#Delete an existing comment
+def delete_comment_in_db(comment_id: int, user_id: int):
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor()
+
+        # Retrieve the comment from the database
+        cursor.execute("SELECT * FROM comments WHERE comment_id = %s", (comment_id,))
+        db_comment = cursor.fetchone()
+
+        if not db_comment:
+            raise HTTPException(status_code=404, detail="Comment not found")
+
+        # Ensure that the user is the owner of the comment
+        if db_comment[2] != user_id:  # Assuming db_comment[2] is the user_id of the comment creator
+            raise HTTPException(status_code=403, detail="Not authorized to delete this comment")
+
+        # Delete the comment
+        cursor.execute("DELETE FROM comments WHERE comment_id = %s", (comment_id,))
+        
+        db_conn.commit()
+
+        return {"message": "Comment deleted successfully"}
+
+    except Exception as e:
+        raise e
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection error")
+    
+#likes a comment
+def like_comment_in_db(comment_id: int, user_id: int):
+    db_conn = get_db_connection()
+    cursor = db_conn.cursor()
+
+    # Check if the comment exists
+    cursor.execute("SELECT * FROM comments WHERE comment_id = %s", (comment_id,))
+    db_comment = cursor.fetchone()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Check if the user has already liked the comment
+    cursor.execute("SELECT * FROM comment_likes WHERE comment_id = %s AND user_id = %s", (comment_id, user_id))
+    existing_like = cursor.fetchone()
+
+    if existing_like:
+        raise HTTPException(status_code=400, detail="You have already liked this comment")
+
+    # Insert the like into the comment_likes table
+    cursor.execute("INSERT INTO comment_likes (comment_id, user_id, created_at) VALUES (%s, %s, CURRENT_TIMESTAMP)",
+                   (comment_id, user_id))
+
+    db_conn.commit()
+    return {"message": "Comment liked successfully"}
+
+#unlike the liked comment(remove your likes from a comment)
+def unlike_comment_in_db(comment_id: int, user_id: int):
+    db_conn = get_db_connection()
+    cursor = db_conn.cursor()
+
+    # Check if the comment exists
+    cursor.execute("SELECT * FROM comments WHERE comment_id = %s", (comment_id,))
+    db_comment = cursor.fetchone()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # Check if the user has liked the comment
+    cursor.execute("SELECT * FROM comment_likes WHERE comment_id = %s AND user_id = %s", (comment_id, user_id))
+    existing_like = cursor.fetchone()
+
+    if not existing_like:
+        raise HTTPException(status_code=400, detail="You haven't liked this comment yet")
+
+    # Remove the like from the comment_likes table
+    cursor.execute("DELETE FROM comment_likes WHERE comment_id = %s AND user_id = %s", (comment_id, user_id))
+
+    db_conn.commit()
+    return {"message": "Comment unliked successfully"}
+
+# Like a post
+def like_post_in_db(post_id: int, user_id: int):
+    db_conn = get_db_connection()
+    cursor = db_conn.cursor()
+    
+    # Check if the user has already liked the post
+    cursor.execute("SELECT * FROM post_likes WHERE post_id = %s AND user_id = %s", (post_id, user_id))
+    existing_like = cursor.fetchone()
+
+    if existing_like:
+        raise HTTPException(status_code=400, detail="You have already liked this post.")
+    
+    # Insert the like into the table
+    cursor.execute("INSERT INTO post_likes (post_id, user_id) VALUES (%s, %s)", (post_id, user_id))
+    db_conn.commit()
+
+    return {"message": "Post liked successfully"}
+
+# Unlike a post
+def unlike_post_in_db(post_id: int, user_id: int):
+    db_conn = get_db_connection()
+    cursor = db_conn.cursor()
+    
+    # Check if the user has liked the post
+    cursor.execute("SELECT * FROM post_likes WHERE post_id = %s AND user_id = %s", (post_id, user_id))
+    existing_like = cursor.fetchone()
+
+    if not existing_like:
+        raise HTTPException(status_code=400, detail="You haven't liked this post yet.")
+    
+    # Delete the like (unlike the post)
+    cursor.execute("DELETE FROM post_likes WHERE post_id = %s AND user_id = %s", (post_id, user_id))
+    db_conn.commit()
+
+    return {"message": "Post unliked successfully"}
+
+
+# Search posts by keyword (description)
+def search_posts_in_db(keyword: Optional[str], page: int, page_size: int) -> List[dict]:
+    db_conn = get_db_connection()
+    cursor = db_conn.cursor()
+    
+    # Perform search query with ILIKE for case-insensitive matching
+    search_query = "SELECT post_id, description, created_at, updated_at FROM posts WHERE description ILIKE %s LIMIT %s OFFSET %s"
+    cursor.execute(search_query, ('%' + keyword + '%', page_size, (page - 1) * page_size))
+    posts = cursor.fetchall()
+
+    # Check if posts were found
+    if not posts:
+        raise HTTPException(status_code=404, detail="No posts found matching the keyword.")
+    
+    # Structure the result in the expected format
+    result = [
+        {"post_id": row[0], "description": row[1], "created_at": row[2], "updated_at": row[3]}
+        for row in posts
+    ]
+    
+    return result
