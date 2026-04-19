@@ -1,6 +1,6 @@
 # 📱 SocialApp
 
-A full-stack social media application that allows users to connect, share posts, and interact with each other.
+A Backend social media application that allows users to connect, share posts, and interact with each other.
 
 ---
 
@@ -10,29 +10,23 @@ A full-stack social media application that allows users to connect, share posts,
 - User Profiles
 - Create, Edit, Delete Posts
 - Like & Comment on Posts
-- Follow / Unfollow Users
-- Search Users
-- Image Upload Support
+- Like on Comment and nested comments
+- Search Functionality
 
 ---
 
 ## 🛠️ Tech Stack
 
-**Frontend**
-- React / React Native
-- JavaScript / TypeScript
-
 **Backend**
-- Node.js
-- Express.js
+- Python
+- FastAPI
 
 **Database**
-- MongoDB / Firebase
+- MongoDB / PostgreSQL
 
 **Other Tools**
 - JWT Authentication
-- Cloudinary / Firebase Storage
-- Axios
+- JWT Authorization
 
 ---
 
